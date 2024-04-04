@@ -27,7 +27,7 @@ class Follows(db.Model):
         primary_key=True,
     )
 
-
+"""removed 'unique=true'to allow multiple users to like a message"""
 class Likes(db.Model):
     """Mapping user likes to warbles."""
 
@@ -46,10 +46,9 @@ class Likes(db.Model):
     message_id = db.Column(
         db.Integer,
         db.ForeignKey('messages.id', ondelete='cascade'),
-        unique=True
     )
 
-
+#adjusted relationship with likes-df
 class User(db.Model):
     """User in the system."""
 
@@ -112,8 +111,9 @@ class User(db.Model):
     )
 
     likes = db.relationship(
-        'Message',
-        secondary="likes"
+        'Likes', #points to associated model-df
+        backref='user', #allows us to access .user on a like obj
+        lazy='dynamic' #manage load behavior
     )
 
     def __repr__(self):
@@ -199,8 +199,7 @@ class Message(db.Model):
     )
 
     user = db.relationship('User')
-
-
+    
 def connect_db(app):
     """Connect this database to provided Flask app.
 

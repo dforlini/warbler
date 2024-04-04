@@ -4,8 +4,8 @@ from flask import Flask, render_template, request, flash, redirect, session, g
 from flask_debugtoolbar import DebugToolbarExtension
 from sqlalchemy.exc import IntegrityError
 
-from forms import UserAddForm, LoginForm, MessageForm, EditUserForm
-from models import db, connect_db, User, Message
+from forms import UserAddForm, LoginForm, MessageForm, EditUserForm, LikeForm
+from models import db, connect_db, User, Message, Likes
 
 CURR_USER_KEY = "curr_user"
 
@@ -20,7 +20,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['SQLALCHEMY_ECHO'] = False
 app.config['DEBUG_TB_INTERCEPT_REDIRECTS'] = True
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', "it's a secret")
-toolbar = DebugToolbarExtension(app)
+#toolbar = DebugToolbarExtension(app)
 
 connect_db(app)
 
@@ -229,7 +229,7 @@ def profile():
         else:
             flash("Incorrect password, please try again")
             return redirect('/')
-    return render_template('users/edit.html', form=form)    
+    return render_template('users/edit.html', form=form, user_id=g.user.id)  #fixed to make sure template has access to user_id variable  
 
 
 @app.route('/users/delete', methods=["POST"])
@@ -295,6 +295,52 @@ def messages_destroy(message_id):
     db.session.commit()
 
     return redirect(f"/users/{g.user.id}")
+#added routes for like and unlike-df
+@app.route('/messages/<int:message_id>/like', methods=['POST'])
+def like_message(message_id):
+    if not g.user:
+        flash("Access unauthorized.")
+        return redirect("/")
+
+    message = Message.query.get_or_404(message_id)
+    # Check if the current user is not the author of the message-df
+    if message.user_id == g.user.id:
+        flash("You cannot like your own message.", "danger")
+        return redirect(request.referrer)
+
+    new_like = Likes(user_id=g.user.id, message_id=message_id)
+    db.session.add(new_like)
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        flash("You've already liked this message.")
+    return redirect(request.referrer)
+
+@app.route('/messages/<int:message_id>/unlike', methods=['POST'])
+def unlike_message(message_id):
+    if not g.user:
+        flash("Access unauthorized.")
+        return redirect("/")
+    
+    message = Message.query.get_or_404(message_id)
+    # Check if the current user is not the author of the message-df
+    if message.user_id == g.user.id:
+        flash("You cannot unlike your own message.", "danger")
+        return redirect(request.referrer)
+
+    Likes.query.filter_by(user_id=g.user.id, message_id=message_id).delete()
+    db.session.commit()
+    return redirect(request.referrer)
+
+#calculate total # of likes recieved-df
+@app.route('/users/<int:user_id>')
+def users_total_likes(user_id):
+    user = User.query.get_or_404(user_id)
+    total_likes_received = sum([msg.likes.count() for msg in user.messages])
+    # pass total_likes_received to the template-df
+    return render_template('detail.html', user=user, total_likes_received=total_likes_received)
+
 
 
 ##############################################################################
@@ -308,17 +354,19 @@ def homepage():
     - anon users: no messages
     - logged in: 100 most recent messages of followed_users
     """
+    like_form = LikeForm()
 
     if g.user:
         """get the ids of users being followed by the current user-df"""
         following_ids = [u.id for u in g.user.following] + [g.user.id]
         """adjusted to fetch messages where the user_id is in following_ids-df"""
         messages = Message.query.filter(Message.user_id.in_(following_ids)).order_by(Message.timestamp.desc()).limit(100).all()
-
-        return render_template('home.html', messages=messages)
+        g.user_likes_ids = [like.message_id for like in g.user.likes]
+        
+        return render_template('home.html', messages=messages, like_form=like_form)
 
     else:
-        return render_template('home-anon.html')
+        return render_template('home-anon.html', like_form=like_form)
 
 
 ##############################################################################

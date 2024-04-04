@@ -32,3 +32,7 @@ class EditUserForm(FlaskForm):
     header_image_url = StringField('Header Image Url')
     bio = TextAreaField('Bio')
     password = PasswordField('Current Password', validators=[DataRequired()])
+    
+#added form-df    
+class LikeForm(FlaskForm):
+    """Form for liking/unliking a message."""  
